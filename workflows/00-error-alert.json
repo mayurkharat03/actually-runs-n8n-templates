@@ -1,0 +1,73 @@
+{
+  "id": "AtarErrorAlert01",
+  "name": "00 \u00b7 Error Alert (shared)",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Error Alert\nEvery other workflow points here (*Settings \u2192 Error workflow*).\nIf anything fails, you get a Slack message **today**, not a month from now.\n\nSet up: connect Slack credentials, create channel `#automation-alerts`.",
+        "height": 260,
+        "width": 420,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -80,
+        -260
+      ],
+      "name": "README -80-260",
+      "id": "notem80m260"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "name": "On Error",
+      "id": "OnError"
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "#automation-alerts"
+        },
+        "text": "=:rotating_light: *{{ $json.workflow.name }}* failed\nNode: `{{ $json.execution.lastNodeExecuted }}`\nError: {{ $json.execution.error.message }}\n{{ $json.execution.url }}",
+        "otherOptions": {
+          "includeLinkToWorkflow": false
+        }
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.3,
+      "position": [
+        260,
+        0
+      ],
+      "name": "Alert Me",
+      "id": "AlertMe"
+    }
+  ],
+  "connections": {
+    "On Error": {
+      "main": [
+        [
+          {
+            "node": "Alert Me",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

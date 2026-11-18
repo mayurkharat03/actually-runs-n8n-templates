@@ -1,0 +1,208 @@
+{
+  "id": "AtarWeeklySum01",
+  "name": "01 \u00b7 Weekly Summary \u2192 Slack",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## 1 \u00b7 Weekly Summary\nMonday 08:55: merged PRs from the last 7 days \u2192 local AI \u2192 Slack.\n\nSet up:\n1. GitHub credential + set **owner/repo** in *Get PRs*\n2. Slack credential, channel `#weekly-update`\n3. Ollama running locally\n\nFailures go to **00 \u00b7 Error Alert**.",
+        "height": 300,
+        "width": 460,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -80,
+        -300
+      ],
+      "name": "README -80-300",
+      "id": "notem80m300"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [
+                1
+              ],
+              "triggerAtHour": 8,
+              "triggerAtMinute": 55
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "name": "Monday 08:55",
+      "id": "Monday0855"
+    },
+    {
+      "parameters": {
+        "resource": "repository",
+        "operation": "getPullRequests",
+        "owner": {
+          "__rl": true,
+          "mode": "name",
+          "value": "n8n-io"
+        },
+        "repository": {
+          "__rl": true,
+          "mode": "name",
+          "value": "n8n"
+        },
+        "limit": 100,
+        "getRepositoryPullRequestsFilters": {
+          "state": "closed"
+        }
+      },
+      "type": "n8n-nodes-base.github",
+      "typeVersion": 1.1,
+      "position": [
+        220,
+        0
+      ],
+      "name": "Get PRs",
+      "id": "GetPRs"
+    },
+    {
+      "parameters": {
+        "jsCode": "const weekAgo = Date.now() - 7*24*3600*1000;\nconst prs = $input.all().map(i => i.json)\n  .filter(p => p.merged_at && new Date(p.merged_at) > weekAgo)\n  .map(p => `- ${p.title} (${p.user?.login}) ${p.html_url}`);\nif (!prs.length) return [{ json: { prs: 'No PRs merged this week.' } }];\nreturn [{ json: { prs: prs.slice(0, 60).join('\\n') } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        0
+      ],
+      "name": "Last 7 Days Only",
+      "id": "Last7Days"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You write the weekly engineering update for a busy manager.\nSections: *Shipped*, *In progress*, *Risks*. Max 120 words. Bullets. Mention people by name. No fluff, no emojis. Slack formatting: *bold* with single asterisks, never **.\n\nLast 7 days of merged pull requests:\n{{ $json.prs }}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.7,
+      "position": [
+        660,
+        0
+      ],
+      "name": "Write Update",
+      "id": "WriteUpdate"
+    },
+    {
+      "parameters": {
+        "model": "qwen3.6:27b",
+        "options": {
+          "temperature": 0.3
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        660,
+        220
+      ],
+      "name": "Local AI",
+      "id": "LocalAI",
+      "credentials": {
+        "ollamaApi": {
+          "id": "ollamaLocal",
+          "name": "Ollama (local)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "#weekly-update"
+        },
+        "text": "={{ $json.text }}",
+        "otherOptions": {
+          "includeLinkToWorkflow": false
+        }
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.3,
+      "position": [
+        940,
+        0
+      ],
+      "name": "Post to Slack",
+      "id": "PosttoSlack"
+    }
+  ],
+  "connections": {
+    "Monday 08:55": {
+      "main": [
+        [
+          {
+            "node": "Get PRs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get PRs": {
+      "main": [
+        [
+          {
+            "node": "Last 7 Days Only",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Last 7 Days Only": {
+      "main": [
+        [
+          {
+            "node": "Write Update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write Update": {
+      "main": [
+        [
+          {
+            "node": "Post to Slack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Local AI": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Write Update",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": "AtarErrorAlert01"
+  },
+  "pinData": {}
+}

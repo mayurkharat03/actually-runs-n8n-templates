@@ -1,0 +1,291 @@
+{
+  "id": "AtarWeeklyPro1",
+  "name": "04 \u00b7 Weekly Summary (production-proof)",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [
+                1
+              ],
+              "triggerAtHour": 8,
+              "triggerAtMinute": 55
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "name": "Monday 08:55",
+      "id": "Monday0855"
+    },
+    {
+      "parameters": {
+        "resource": "repository",
+        "operation": "getPullRequests",
+        "owner": {
+          "__rl": true,
+          "mode": "name",
+          "value": "n8n-io"
+        },
+        "repository": {
+          "__rl": true,
+          "mode": "name",
+          "value": "n8n"
+        },
+        "limit": 100,
+        "getRepositoryPullRequestsFilters": {
+          "state": "closed"
+        }
+      },
+      "type": "n8n-nodes-base.github",
+      "typeVersion": 1.1,
+      "position": [
+        220,
+        0
+      ],
+      "name": "Get PRs",
+      "id": "GetPRs"
+    },
+    {
+      "parameters": {
+        "jsCode": "const weekAgo = Date.now() - 7*24*3600*1000;\nconst prs = $input.all().map(i => i.json)\n  .filter(p => p.merged_at && new Date(p.merged_at) > weekAgo)\n  .map(p => `- ${p.title} (${p.user?.login}) ${p.html_url}`);\nif (!prs.length) return [{ json: { prs: 'No PRs merged this week.' } }];\nreturn [{ json: { prs: prs.slice(0, 60).join('\\n') } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        0
+      ],
+      "name": "Last 7 Days Only",
+      "id": "Last7Days"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You write the weekly engineering update for a busy manager.\nSections: *Shipped*, *In progress*, *Risks*. Max 120 words. Bullets. Mention people by name. No fluff, no emojis. Slack formatting: *bold* with single asterisks, never **.\n\nLast 7 days of merged pull requests:\n{{ $json.prs }}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.7,
+      "position": [
+        660,
+        0
+      ],
+      "name": "Write Update",
+      "id": "WriteUpdate"
+    },
+    {
+      "parameters": {
+        "model": "qwen3.6:27b",
+        "options": {
+          "temperature": 0.3
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        660,
+        220
+      ],
+      "name": "Local AI",
+      "id": "LocalAI",
+      "credentials": {
+        "ollamaApi": {
+          "id": "ollamaLocal",
+          "name": "Ollama (local)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## 4 \u00b7 Weekly Summary (production-proof)\nSame as 01, plus the part demos skip:\n**Output empty or cut off?** checks the AI's answer, not the status code.\nIf it fails \u2192 **Fail Loudly** throws \u2192 **00 \u00b7 Error Alert** pings you.\nNothing broken ever reaches your manager.",
+        "height": 300,
+        "width": 520,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -80,
+        -320
+      ],
+      "name": "README -80-320",
+      "id": "notem80m320"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "combinator": "or",
+          "conditions": [
+            {
+              "id": "empty",
+              "leftValue": "={{ $json.text }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "empty",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "short",
+              "leftValue": "={{ ($json.text || '').trim().length }}",
+              "rightValue": 40,
+              "operator": {
+                "type": "number",
+                "operation": "lt"
+              }
+            },
+            {
+              "id": "cut",
+              "leftValue": "={{ /[.!?)]\\s*$/.test(($json.text || '').trim()) }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        940,
+        0
+      ],
+      "name": "Output empty or cut off?",
+      "id": "CheckOutput"
+    },
+    {
+      "parameters": {
+        "errorMessage": "=Weekly report blocked: AI output was empty or incomplete ({{ ($json.text || '').length }} chars)"
+      },
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        1200,
+        -120
+      ],
+      "name": "Fail Loudly",
+      "id": "FailLoudly"
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "#weekly-update"
+        },
+        "text": "={{ $json.text }}",
+        "otherOptions": {
+          "includeLinkToWorkflow": false
+        }
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.3,
+      "position": [
+        1200,
+        120
+      ],
+      "name": "Post to Slack",
+      "id": "PosttoSlack"
+    }
+  ],
+  "connections": {
+    "Monday 08:55": {
+      "main": [
+        [
+          {
+            "node": "Get PRs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get PRs": {
+      "main": [
+        [
+          {
+            "node": "Last 7 Days Only",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Last 7 Days Only": {
+      "main": [
+        [
+          {
+            "node": "Write Update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write Update": {
+      "main": [
+        [
+          {
+            "node": "Output empty or cut off?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Output empty or cut off?": {
+      "main": [
+        [
+          {
+            "node": "Fail Loudly",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Post to Slack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Local AI": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Write Update",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": "AtarErrorAlert01"
+  },
+  "pinData": {}
+}

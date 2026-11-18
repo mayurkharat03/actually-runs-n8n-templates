@@ -1,0 +1,167 @@
+{
+  "id": "AtarMeetAct001",
+  "name": "03 \u00b7 Meeting Transcript \u2192 Action Items (local)",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## 3 \u00b7 Meeting \u2192 Action Items (100% local)\nPOST a transcript to the webhook \u2192 local AI extracts task / owner / due \u2192 one Slack message per task.\nNothing leaves your machine except the Slack post.\n\nTest:\n`curl -X POST localhost:5678/webhook/meeting -H 'Content-Type: text/plain' --data-binary @transcript.txt`\n\nSwap *Post Task* for Jira / Linear / Notion / Todoist to create real tickets.",
+        "height": 320,
+        "width": 520,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -80,
+        -340
+      ],
+      "name": "README -80-340",
+      "id": "notem80m340"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "meeting",
+        "responseMode": "lastNode",
+        "options": {
+          "rawBody": false
+        }
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "name": "Transcript In",
+      "id": "TranscriptIn",
+      "webhookId": "c3e5a7b9-2d4f-4a6b-9c8e-0f1a2b3c4d03"
+    },
+    {
+      "parameters": {
+        "text": "=Extract every action item from this meeting transcript.\n\n{{ typeof $json.body === 'string' ? $json.body : ($json.body.transcript || JSON.stringify($json.body)) }}",
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"tasks\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"task\": {\n            \"type\": \"string\",\n            \"description\": \"Concrete action, starts with a verb\"\n          },\n          \"owner\": {\n            \"type\": \"string\",\n            \"description\": \"Person responsible, 'Unassigned' if unclear\"\n          },\n          \"due\": {\n            \"type\": \"string\",\n            \"description\": \"Due date if mentioned, else 'none'\"\n          }\n        },\n        \"required\": [\n          \"task\",\n          \"owner\",\n          \"due\"\n        ]\n      }\n    }\n  },\n  \"required\": [\n    \"tasks\"\n  ]\n}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.informationExtractor",
+      "typeVersion": 1.2,
+      "position": [
+        240,
+        0
+      ],
+      "name": "Extract Actions",
+      "id": "ExtractActions"
+    },
+    {
+      "parameters": {
+        "model": "qwen3.6:27b",
+        "options": {
+          "temperature": 0.3
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        240,
+        220
+      ],
+      "name": "Local AI",
+      "id": "LocalAI",
+      "credentials": {
+        "ollamaApi": {
+          "id": "ollamaLocal",
+          "name": "Ollama (local)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "output.tasks",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        500,
+        0
+      ],
+      "name": "One Per Task",
+      "id": "OnePerTask"
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "#action-items"
+        },
+        "text": "=:white_check_mark: *{{ $json.task }}*\nOwner: {{ $json.owner }} \u00b7 Due: {{ $json.due }}",
+        "otherOptions": {
+          "includeLinkToWorkflow": false
+        }
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.3,
+      "position": [
+        740,
+        0
+      ],
+      "name": "Post Task",
+      "id": "PostTask"
+    }
+  ],
+  "connections": {
+    "Transcript In": {
+      "main": [
+        [
+          {
+            "node": "Extract Actions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Actions": {
+      "main": [
+        [
+          {
+            "node": "One Per Task",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "One Per Task": {
+      "main": [
+        [
+          {
+            "node": "Post Task",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Local AI": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Extract Actions",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": "AtarErrorAlert01"
+  },
+  "pinData": {}
+}

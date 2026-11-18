@@ -1,0 +1,309 @@
+{
+  "id": "AtarInboxTri01",
+  "name": "02 \u00b7 Inbox Triage + Human Approval",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## 2 \u00b7 Inbox Triage + Approval Button\nNew email \u2192 AI sorts *needs-me / fyi / can-wait*.\nFor *needs-me*, AI **drafts** a reply and asks you in Slack.\n**Nothing is sent until you click Approve.**\n\nSet up: Gmail credential (use a test inbox first), Slack credential, Ollama.",
+        "height": 300,
+        "width": 480,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -80,
+        -320
+      ],
+      "name": "README -80-320",
+      "id": "notem80m320"
+    },
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyX",
+              "value": 5,
+              "unit": "minutes"
+            }
+          ]
+        },
+        "simple": false,
+        "filters": {
+          "readStatus": "unread"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "name": "New Email",
+      "id": "NewEmail"
+    },
+    {
+      "parameters": {
+        "inputText": "=Subject: {{ $json.subject }}\n\n{{ $json.text }}",
+        "categories": {
+          "categories": [
+            {
+              "category": "needs-me",
+              "description": "A person is asking me something or waiting on my decision"
+            },
+            {
+              "category": "fyi",
+              "description": "Informational updates, announcements, CCs"
+            },
+            {
+              "category": "can-wait",
+              "description": "Newsletters, promotions, automated notifications"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.textClassifier",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        0
+      ],
+      "name": "Sort Email",
+      "id": "SortEmail"
+    },
+    {
+      "parameters": {
+        "model": "qwen3.6:27b",
+        "options": {
+          "temperature": 0.3
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        240,
+        220
+      ],
+      "name": "Local AI (sort)",
+      "id": "LocalAI(sort)",
+      "credentials": {
+        "ollamaApi": {
+          "id": "ollamaLocal",
+          "name": "Ollama (local)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Draft a short, polite reply to this email. Do not promise dates or commitments. Max 80 words. Plain text, no subject line.\n\nFrom: {{ $('New Email').item.json.from }}\nSubject: {{ $('New Email').item.json.subject }}\n\n{{ $('New Email').item.json.text }}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.7,
+      "position": [
+        520,
+        -120
+      ],
+      "name": "Draft Reply",
+      "id": "DraftReply"
+    },
+    {
+      "parameters": {
+        "model": "qwen3.6:27b",
+        "options": {
+          "temperature": 0.3
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        520,
+        100
+      ],
+      "name": "Local AI (draft)",
+      "id": "LocalAI(draft)",
+      "credentials": {
+        "ollamaApi": {
+          "id": "ollamaLocal",
+          "name": "Ollama (local)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "sendAndWait",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "#inbox-approvals"
+        },
+        "message": "=*Reply to:* {{ $('New Email').item.json.subject }}\n\n{{ $json.text }}",
+        "approvalOptions": {
+          "values": {
+            "approvalType": "double",
+            "approveLabel": "Send it",
+            "disapproveLabel": "Skip"
+          }
+        },
+        "options": {
+          "limitWaitTime": {
+            "values": {
+              "limitType": "afterTimeInterval",
+              "resumeAmount": 24,
+              "resumeUnit": "hours"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.3,
+      "position": [
+        780,
+        -120
+      ],
+      "name": "Ask Me in Slack",
+      "id": "AskMe",
+      "webhookId": "a7c1e3d2-0b4f-4e8a-9f61-2d5c8b7e1a01"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "approved",
+              "leftValue": "={{ $json.data.approved }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1020,
+        -120
+      ],
+      "name": "Approved?",
+      "id": "Approved"
+    },
+    {
+      "parameters": {
+        "operation": "reply",
+        "messageId": "={{ $('New Email').item.json.id }}",
+        "emailType": "text",
+        "message": "={{ $('Draft Reply').item.json.text }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1260,
+        -200
+      ],
+      "name": "Send Reply",
+      "id": "SendReply",
+      "webhookId": "b2d4f6a8-1c3e-4f5a-8b7d-9e0f1a2b3c02"
+    }
+  ],
+  "connections": {
+    "New Email": {
+      "main": [
+        [
+          {
+            "node": "Sort Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sort Email": {
+      "main": [
+        [
+          {
+            "node": "Draft Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Draft Reply": {
+      "main": [
+        [
+          {
+            "node": "Ask Me in Slack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ask Me in Slack": {
+      "main": [
+        [
+          {
+            "node": "Approved?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Approved?": {
+      "main": [
+        [
+          {
+            "node": "Send Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Local AI (sort)": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Sort Email",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Local AI (draft)": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Draft Reply",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": "AtarErrorAlert01"
+  },
+  "pinData": {}
+}
